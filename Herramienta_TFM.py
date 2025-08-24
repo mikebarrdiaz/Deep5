@@ -1,12 +1,20 @@
 import streamlit as st
 import pydeck as pdk
 import pandas as pd
+import numpy as np
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.neighbors import NearestNeighbors
+from streamlit_autorefresh import st_autorefresh
+import altair as alt
+
 
 # =========================
 # CONFIG BASICA DE LA APP
 # =========================
 st.set_page_config(
-    page_title="Redistribución Turística",
+    page_title="RedisTour",
     page_icon="🌍",
     layout="wide"
 )
@@ -31,159 +39,61 @@ def hex_to_rgba(hex_str, alpha=1.0):
     return [r, g, b, a]
 
 
-# =========================
-# CSS GLOBAL (fondo blanco + hero intacto + selects en paleta)
-# =========================
-st.markdown(f"""
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
+st.markdown("""
 <style>
-:root {{
-  --indigo_dye: {COLORS["indigo_dye"]};
-  --paynes_gray: {COLORS["paynes_gray"]};
-  --slate_gray: {COLORS["slate_gray"]};
-  --lapis_lazuli: {COLORS["lapis_lazuli"]};
-}}
-
-html, body, .stApp {{
-  background: #ffffff !important;
-  color: var(--indigo_dye) !important;
-  font-family: 'Inter', sans-serif !important;
-}}
-
-h1, h2, h3, h4, h5 {{
-  color: var(--indigo_dye) !important;
-}}
-
-/* ---------------- Botones ---------------- */
-.stButton > button {{
-  background: var(--lapis_lazuli) !important;
-  color: #fff !important;
-  border: none !important;
-  border-radius: 8px !important;
-  padding: .5rem 1rem !important;
-  box-shadow: 0 2px 8px rgba(0,0,0,.06);
-  transition: background .15s ease, transform .05s ease;
-}}
-.stButton > button:hover {{ background: var(--paynes_gray) !important; }}
-.stButton > button:active {{ transform: translateY(1px); }}
-
-/* --------------- Inputs / Selects / Multiselects --------------- */
-[data-baseweb="select"] > div,
-.stSelectbox div[role="combobox"],
-.stMultiSelect div[role="combobox"],
-.stTextInput input {{
-  border-radius: 6px !important;
-  border: 1px solid var(--lapis_lazuli) !important;
-  background-color: #fff !important;
-  color: var(--indigo_dye) !important;
-  box-shadow: none !important;
-}}
-/* Focus visible en la paleta */
-[data-baseweb="select"] > div:focus-within,
-.stSelectbox div[role="combobox"]:focus-within,
-.stMultiSelect div[role="combobox"]:focus-within,
-.stTextInput input:focus {{
-  outline: 2px solid color-mix(in srgb, var(--lapis_lazuli) 60%, white) !important;
-  border-color: var(--paynes_gray) !important;
-}}
-
-/* Etiquetas (chips) seleccionadas en MultiSelect */
-.stMultiSelect [data-baseweb="tag"] {{
-  background-color: var(--lapis_lazuli) !important;
-  color: #fff !important;
-  border-radius: 6px !important;
-  padding: 0.15rem 0.45rem !important;
-  border: none !important;
-}}
-.stMultiSelect [data-baseweb="tag"] * {{
-  color: #fff !important;
-}}
-/* Dropdown del select (lista de opciones) */
-div[role="listbox"] {{
-  border: 1px solid var(--lapis_lazuli) !important;
-  box-shadow: 0 6px 18px rgba(0,0,0,.08) !important;
-}}
-div[role="option"] {{
-  color: var(--indigo_dye) !important;
-}}
-div[role="option"][aria-selected="true"],
-div[role="option"]:hover {{
-  background: color-mix(in srgb, var(--lapis_lazuli) 10%, white) !important;
-}}
-
-/* Etiquetas de los widgets */
-.stSelectbox label, .stMultiSelect label, .stSlider label, .stTextInput label {{
-  color: var(--slate_gray) !important;
-}}
-
-/* ---------------- Alertas ---------------- */
-div.stAlert > div {{
-  background: #f6f7f8;
-  color: var(--indigo_dye);
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--slate_gray) 25%, white);
-}}
-
-/* ---------------- Footer ---------------- */
-.footer-note {{
-  text-align: center;
-  color: var(--slate_gray);
-  font-size: 0.9rem;
-}}
-
-/* ---------------- HERO (intacto) ---------------- */
-.img-wrapper {{
+/* Hero */
+.img-wrapper {
   position: relative;
   width: 100%;
   height: 450px;
-}}
-.img-wrapper img {{
+}
+.img-wrapper img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 10px !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}}
-.city-label {{
+  border-radius: 5px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+}
+.city-label {
   position: absolute;
   bottom: 20px;
   right: 30px;
-  background: rgba(56, 89, 113, 0.75); /* paynes gray */
-  color: white;
+  background: rgba(0,0,0,0.45);
+  color: #fff;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
   backdrop-filter: blur(3px);
-}}
+}
 
-/* ---------------- Header ---------------- */
-.header-container {{
+/* Header: solo tamaños y espaciado (sin colores) */
+.header-container {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  height: 100%;
-  font-family: 'Segoe UI', sans-serif;
-}}
-.header-container h1 {{
-  font-size: 2.4rem;
-  font-weight: 700;
-  color: var(--indigo_dye);
+}
+.header-container h1 {
   margin: 0;
-}}
-.header-container p {{
+  font-size: 3rem;
+}
+.header-container p {
+  margin: 0;
   font-size: 1.1rem;
-  color: var(--slate_gray);
-  margin: 0 0.3rem 0 0;
-}}
+}
+
+/* Footer: solo aspecto neutro */
+.footer-note {
+  text-align: center;
+  font-size: 0.9rem;
+  opacity: .9;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-
 # =========================
-# CARGA DE DATOS
+# CARGA DE DATOS (mapa)
 # =========================
 @st.cache_data
 def cargar_datos():
@@ -201,21 +111,69 @@ df_coords["ZONA_TURISTICA"] = df_coords["ZONA_TURISTICA"].astype(str).str.strip(
 # Unir coordenadas
 df = pd.merge(df_total, df_coords[["ZONA_TURISTICA", "lat", "long"]], on="ZONA_TURISTICA", how="left")
 
+
+# =========================
+# RECOMENDADOR k-NN (Destino alternativo)
+# =========================
+@st.cache_data(show_spinner=False)
+def cargar_datazt():
+    df_zt = pd.read_excel("./Data_Dataestur/DataZT.xlsx", sheet_name="Data ZT")
+    # Forzar string en categóricas por si hay NaNs/mixtos
+    for col in [
+        "Tipo_Ubicación", "Clima_Köppen", "Tipo_Turismo_Principal",
+        "Estacionalidad_Climática", "Nivel_Infraestructura_Turística",
+        "Actividad principal 1", "Actividad principal 2"
+    ]:
+        if col in df_zt.columns:
+            df_zt[col] = df_zt[col].astype(str)
+    return df_zt
+
+@st.cache_resource(show_spinner=False)
+def entrenar_pipeline(df_zt: pd.DataFrame):
+    features = [
+        'Tipo_Ubicación',
+        'Clima_Köppen',
+        'Altitud_Media_msnm',
+        'Tipo_Turismo_Principal',
+        'Estacionalidad_Climática',
+        'Nivel_Infraestructura_Turística',
+        'Actividad principal 1',
+        'Actividad principal 2'
+    ]
+    # Subconjunto para el modelo
+    df_knn = df_zt[features].copy()
+
+    # Columnas
+    categorical_cols = df_knn.select_dtypes(include='object').columns.tolist()
+    numerical_cols = ['Altitud_Media_msnm']
+
+    # Preprocesado
+    preprocessor = ColumnTransformer(transformers=[
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
+        ('num', StandardScaler(), numerical_cols)
+    ])
+
+    # k-NN
+    knn_pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('knn', NearestNeighbors(n_neighbors=10, metric='euclidean'))
+    ])
+    knn_pipeline.fit(df_knn)
+    return knn_pipeline, df_knn, features
+
+
 # =========================
 # ENCABEZADO (logos + texto)
 # =========================
-col_logo, col_text, col_logo2 = st.columns([1, 4, 1])
+col_logo, col_text = st.columns([2, 9])
 
 with col_logo:
-    st.image("./Logos/Redisstour.svg", width=300)
-
-with col_logo2:
-    st.image("./Logos/Logo_Deep5.svg", width=300)
+    st.image("./Logos/Redisstour.svg", width=250)
 
 with col_text:
     st.markdown("""
         <div class="header-container">
-            <h1>Redistribución Inteligente del Flujo Turístico</h1>
+            <h1>Plataforma de Redistribución Inteligente del Turismo</h1>
             <p>Hacia un turismo más sostenible y equilibrado en España</p>
         </div>
     """, unsafe_allow_html=True)
@@ -245,6 +203,9 @@ if "imagen_idx" not in st.session_state:
     st.session_state.imagen_idx = 0
 if "seccion" not in st.session_state:
     st.session_state.seccion = "Inicio"
+# Para controlar el avance automático y evitar dobles incrementos
+if "last_refresh_count" not in st.session_state:
+    st.session_state.last_refresh_count = -1
 
 def avanzar(): st.session_state.imagen_idx = (st.session_state.imagen_idx + 1) % len(imagenes)
 def retroceder(): st.session_state.imagen_idx = (st.session_state.imagen_idx - 1) % len(imagenes)
@@ -252,7 +213,7 @@ def retroceder(): st.session_state.imagen_idx = (st.session_state.imagen_idx - 1
 # =========================
 # MENU SUPERIOR
 # =========================
-col_left, col0, col1, col2, col3, col4, col_right = st.columns([1, 2, 2, 2, 2, 2, 1])
+col_left, col0, col1, col2, col3, col4, col5, col_right = st.columns([1, 2, 2, 2, 2, 2, 2, 1])
 
 with col0:
     if st.button("Inicio", use_container_width=True):
@@ -263,19 +224,31 @@ with col1:
 with col2:
     if st.button("Mapa saturación", use_container_width=True):
         st.session_state.seccion = "Ver mapas de saturación"
-with col3:
+with col4:
     if st.button("Datos históricos", use_container_width=True):
         st.session_state.seccion = "Consultar datos históricos"
-with col4:
+with col5:
     if st.button("Acerca del proyecto", use_container_width=True):
         st.session_state.seccion = "Acerca del proyecto"
+with col3:
+    if st.button("Encuentra tu destino", use_container_width=True):
+        st.session_state.seccion = "Encuentra tu destino"
 
 opcion = st.session_state.seccion
+
 
 # =========================
 # SECCIONES
 # =========================
 if opcion == "Inicio":
+    # ---- Auto-refresco cada 2s y avance automático ----
+    refresh_count = st_autorefresh(interval=4000, key="auto_refresh_hero")
+
+    # Avanzar automático solo si no hay pulsación manual
+    if refresh_count != st.session_state.last_refresh_count:
+        avanzar()
+        st.session_state.last_refresh_count = refresh_count
+
     # Mostrar imagen hero
     imagen_actual = imagenes[st.session_state.imagen_idx]
     st.markdown(f"""
@@ -287,9 +260,15 @@ if opcion == "Inicio":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # ---- Botones debajo de la imagen ----
     col1, col2, col3 = st.columns([1, 30, 1])
-    if col1.button('◀'): retroceder()
-    if col3.button('▶'): avanzar()
+    if col1.button('◀'):
+        retroceder()
+    if col3.button('▶'):
+        avanzar()
+
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # Contenido
     st.subheader("Motivación del proyecto")
@@ -323,8 +302,73 @@ if opcion == "Inicio":
 
 elif opcion == "Seleccionar destino alternativo":
     st.subheader("🔍 Recomendador de destinos turísticos alternativos")
-    st.info("Aquí podrás introducir tu destino actual y ver sugerencias menos saturadas con características similares.")
-    # TODO: lógica de recomendación
+    st.info("Introduce tu destino actual y obtén sugerencias con características similares.")
+
+    # Cargar datos del recomendador y entrenar pipeline (cacheado)
+    df_zt = cargar_datazt()
+    if "Nombre_Zona" not in df_zt.columns:
+        st.error("⚠️ No se encontró la columna 'Nombre_Zona' en DataZT.xlsx (hoja 'Data ZT').")
+    else:
+        knn_pipeline, df_knn, features = entrenar_pipeline(df_zt)
+        zona_nombres = df_zt['Nombre_Zona'].astype(str).tolist()
+
+        colA, colB = st.columns([2,1])
+        with colA:
+            zona_objetivo = st.selectbox(
+                "Elige tu destino actual",
+                options=zona_nombres,
+                index=0,
+                help="Selecciona la zona desde la que quieres buscar alternativas similares."
+            )
+        with colB:
+            k_recom = st.slider("N.º de sugerencias", min_value=3, max_value=10, value=5, step=1)
+
+        if st.button("🔎 Buscar destinos alternativos", use_container_width=True):
+            try:
+                indice_zona = zona_nombres.index(zona_objetivo)
+            except ValueError:
+                st.error("No se encontró la zona seleccionada en los datos.")
+            else:
+                zona_vector = df_knn.iloc[[indice_zona]]
+                distancias, indices = knn_pipeline.named_steps['knn'].kneighbors(
+                    knn_pipeline.named_steps['preprocessor'].transform(zona_vector),
+                    n_neighbors=k_recom + 1  # +1 para incluir la propia
+                )
+
+                resultados = []
+                for j, i in enumerate(indices[0]):
+                    if i == indice_zona:
+                        continue
+                    resultados.append({
+                        "Zona sugerida": zona_nombres[i],
+                        "Distancia": float(distancias[0][j])
+                    })
+                    if len(resultados) == k_recom:
+                        break
+
+                if not resultados:
+                    st.warning("No se pudieron generar sugerencias.")
+                else:
+                    res_df = pd.DataFrame(resultados)
+                    # Escala de similitud 0–100 (relativa al p95 de las distancias)
+                    p95 = np.percentile(res_df["Distancia"], 95) if len(res_df) > 1 else res_df["Distancia"].max()
+                    p95 = p95 if p95 > 0 else 1.0
+                    res_df["Similitud (0-100)"] = (100 * (1 - res_df["Distancia"]/p95)).clip(0, 100).round(1)
+
+                    st.success(f"Destinos alternativos similares a **{zona_objetivo}**")
+                    st.dataframe(
+                        res_df.sort_values(["Distancia","Zona sugerida"]).reset_index(drop=True),
+                        use_container_width=True
+                    )
+
+                    with st.expander("Ver atributos utilizados en la comparación"):
+                        st.write("Características empleadas (categóricas + numéricas):")
+                        st.code("\n".join(features), language="text")
+                        st.write("Valores de la zona objetivo:")
+                        st.dataframe(
+                            df_zt.loc[df_zt["Nombre_Zona"] == zona_objetivo, ["Nombre_Zona"] + features],
+                            use_container_width=True
+                        )
 
 elif opcion == "Ver mapas de saturación":
     st.subheader("Mapa de saturación turística por zona")
@@ -350,7 +394,7 @@ elif opcion == "Ver mapas de saturación":
         tipo_seleccionado = st.multiselect(
             "🏨 Tipo de turismo",
             ["Turismo Hotelero", "Turismo Rural", "Apartamentos", "Campings"],
-            default=["Turismo Hotelero"]
+            default=["Turismo Hotelero", "Turismo Rural", "Apartamentos", "Campings"]
         )
 
     columnas_tipo = {
@@ -377,6 +421,8 @@ elif opcion == "Ver mapas de saturación":
 
     # Agrupar por zona y coords
     df_grouped = df_filtrado.groupby(["ZONA_TURISTICA", "lat", "long"], as_index=False)["viajeros"].sum()
+    df_grouped = df_grouped[df_grouped["viajeros"] > 0]
+    df_grouped["viajeros_fmt"] = df_grouped["viajeros"].apply(lambda x: f"{x:,.0f}".replace(",", "."))
 
     # Colores del mapa / tooltip
     fill_rgba = hex_to_rgba(COLORS["indigo_dye"], alpha=0.70)
@@ -402,9 +448,9 @@ elif opcion == "Ver mapas de saturación":
         ],
         tooltip={
             "html": f"""
-                <div style='font-family: Segoe UI; font-size: 13px;'>
+                <div style='font-family: Satoshi; font-size: 13px;'>
                     <strong style='color:{tooltip_text};'>{{ZONA_TURISTICA}}</strong><br>
-                    <span style='color:{tooltip_text};'>Viajeros: {{viajeros:,.0f}}</span>
+                    <span style='color:{tooltip_text};'>Viajeros: {{viajeros_fmt}}</span>
                 </div>
             """,
             "style": {
@@ -417,10 +463,377 @@ elif opcion == "Ver mapas de saturación":
         }
     ))
 
+
+elif opcion == "Encuentra tu destino":
+    st.subheader("🧭 Encuentra tu destino")
+    st.info("Filtra por características (Data ZT) y obtén destinos que cumplan tus criterios o, si no existen, sugerencias similares.")
+
+    # Cargar tabla de trabajo
+    df_zt = cargar_datazt()
+
+    # Definir columnas/rasgos a usar en filtros
+    features = [
+        'Tipo_Ubicación',
+        'Clima_Köppen',
+        'Altitud_Media_msnm',
+        'Tipo_Turismo_Principal',
+        'Estacionalidad_Climática',
+        'Nivel_Infraestructura_Turística',
+        'Actividad principal 1',
+        'Actividad principal 2'
+    ]
+
+    # Normalizaciones mínimas
+    for col in features:
+        if col in df_zt.columns and df_zt[col].dtype == object:
+            df_zt[col] = df_zt[col].astype(str)
+    # Asegurar columna nombre
+    nombre_col = 'Nombre_Zona' if 'Nombre_Zona' in df_zt.columns else df_zt.columns[0]
+
+    # ===== UI de filtros =====
+    colA, colB, colC = st.columns([1,1,1])
+
+    with colA:
+        tipo_ubic = st.multiselect("Tipo de ubicación", sorted(df_zt['Tipo_Ubicación'].dropna().unique().tolist()) if 'Tipo_Ubicación' in df_zt else [])
+        clima = st.multiselect("Clima (Köppen)", sorted(df_zt['Clima_Köppen'].dropna().unique().tolist()) if 'Clima_Köppen' in df_zt else [])
+        tipo_tur = st.multiselect("Tipo de turismo principal", sorted(df_zt['Tipo_Turismo_Principal'].dropna().unique().tolist()) if 'Tipo_Turismo_Principal' in df_zt else [])
+
+    with colB:
+        estac = st.multiselect("Estacionalidad climática", sorted(df_zt['Estacionalidad_Climática'].dropna().unique().tolist()) if 'Estacionalidad_Climática' in df_zt else [])
+        infra = st.multiselect("Nivel de infraestructura turística", sorted(df_zt['Nivel_Infraestructura_Turística'].dropna().unique().tolist()) if 'Nivel_Infraestructura_Turística' in df_zt else [])
+        act1 = st.multiselect("Actividad principal 1", sorted(df_zt['Actividad principal 1'].dropna().unique().tolist()) if 'Actividad principal 1' in df_zt else [])
+
+    with colC:
+        act2 = st.multiselect("Actividad principal 2", sorted(df_zt['Actividad principal 2'].dropna().unique().tolist()) if 'Actividad principal 2' in df_zt else [])
+        # Slider de altitud
+        if 'Altitud_Media_msnm' in df_zt:
+            alt_min = int(pd.to_numeric(df_zt['Altitud_Media_msnm'], errors='coerce').min())
+            alt_max = int(pd.to_numeric(df_zt['Altitud_Media_msnm'], errors='coerce').max())
+            alt_sel = st.slider("Altitud media (msnm)", min_value=alt_min, max_value=alt_max, value=(alt_min, alt_max), step=max(1,(alt_max-alt_min)//100 or 1))
+        else:
+            alt_sel = None
+
+    # Opciones
+    col_opts1, col_opts2 = st.columns([1,1])
+    with col_opts1:
+        k_sugerencias = st.slider("N.º de sugerencias similares", 3, 10, 5, 1)
+    with col_opts2:
+        fallback_similares = st.checkbox("Si no hay coincidencias, sugerir similares", value=True)
+
+    # Botón ejecutar
+    if st.button("🔎 Buscar destinos", use_container_width=True):
+        # -------- Filtro exacto
+        df_fil = df_zt.copy()
+
+        def filtrar_in(df_fil, col, valores):
+            if valores and col in df_fil:
+                return df_fil[df_fil[col].isin(valores)]
+            return df_fil
+
+        # Uso:
+        df_fil = filtrar_in(df_fil, "Tipo_Ubicación", tipo_ubic)
+        df_fil = filtrar_in(df_fil, "Clima_Köppen", clima)
+        df_fil = filtrar_in(df_fil, "Tipo_Turismo_Principal", tipo_tur)
+        df_fil = filtrar_in(df_fil, "Estacionalidad_Climática", estac)
+        df_fil = filtrar_in(df_fil, "Nivel_Infraestructura_Turística", infra)
+        df_fil = filtrar_in(df_fil, "Actividad principal 1", act1)
+        df_fil = filtrar_in(df_fil, "Actividad principal 2", act2)
+
+
+        if alt_sel and 'Altitud_Media_msnm' in df_fil.columns:
+            df_fil = df_fil[pd.to_numeric(df_fil['Altitud_Media_msnm'], errors='coerce').between(alt_sel[0], alt_sel[1])]
+
+        if len(df_fil) > 0:
+            st.success(f"Se han encontrado {len(df_fil)} destinos que cumplen tus criterios.")
+            cols_mostrar = [c for c in [nombre_col] + features if c in df_fil.columns]
+            st.dataframe(df_fil[cols_mostrar].sort_values(by=[nombre_col]).reset_index(drop=True), use_container_width=True)
+        else:
+            if not fallback_similares:
+                st.warning("No se han encontrado destinos con esos criterios. Activa la casilla de sugerencias para ver alternativas similares.")
+            else:
+                # -------- Sugerencias similares (k‑NN)
+                st.info("No hubo coincidencias exactas. Mostrando destinos similares a tus preferencias.")
+                # Entrenar/obtener pipeline ya definido arriba
+                knn_pipeline, df_knn, _ = entrenar_pipeline(df_zt)
+
+                # Construir una fila de consulta a partir de los filtros (toma el 1.º valor si hay varios; si no, usa modo/mediana)
+                def pick_value(col, seleccion, default_func):
+                    if seleccion:
+                        return str(seleccion[0])
+                    if col in df_zt.columns:
+                        # Valor más frecuente
+                        return str(df_zt[col].mode(dropna=True).iloc[0]) if df_zt[col].notna().any() else ""
+                    return default_func()
+
+                q = {}
+                q['Tipo_Ubicación'] = pick_value('Tipo_Ubicación', tipo_ubic, lambda: "")
+                q['Clima_Köppen'] = pick_value('Clima_Köppen', clima, lambda: "")
+                q['Tipo_Turismo_Principal'] = pick_value('Tipo_Turismo_Principal', tipo_tur, lambda: "")
+                q['Estacionalidad_Climática'] = pick_value('Estacionalidad_Climática', estac, lambda: "")
+                q['Nivel_Infraestructura_Turística'] = pick_value('Nivel_Infraestructura_Turística', infra, lambda: "")
+                q['Actividad principal 1'] = pick_value('Actividad principal 1', act1, lambda: "")
+                q['Actividad principal 2'] = pick_value('Actividad principal 2', act2, lambda: "")
+                if 'Altitud_Media_msnm' in df_zt.columns:
+                    if alt_sel:
+                        q['Altitud_Media_msnm'] = np.mean(alt_sel)
+                    else:
+                        q['Altitud_Media_msnm'] = float(pd.to_numeric(df_zt['Altitud_Media_msnm'], errors='coerce').median())
+                else:
+                    q['Altitud_Media_msnm'] = 0.0
+
+                # DataFrame de consulta
+                q_df = pd.DataFrame([q])
+
+                # Vecinos más cercanos
+                dist, idx = knn_pipeline.named_steps['knn'].kneighbors(
+                    knn_pipeline.named_steps['preprocessor'].transform(q_df),
+                    n_neighbors=k_sugerencias
+                )
+
+                resultados = []
+                nombres = df_zt[nombre_col].astype(str).tolist()
+                for j, i in enumerate(idx[0]):
+                    resultados.append({
+                        "Zona sugerida": nombres[i],
+                        "Distancia": float(dist[0][j])
+                    })
+
+                res_df = pd.DataFrame(resultados)
+                # Escala de similitud 0–100 (relativa)
+                p95 = np.percentile(res_df["Distancia"], 95) if len(res_df) > 1 else res_df["Distancia"].max()
+                p95 = p95 if p95 > 0 else 1.0
+                res_df["Similitud (0-100)"] = (100 * (1 - res_df["Distancia"]/p95)).clip(0, 100).round(1)
+
+                st.success("Sugerencias similares")
+                st.dataframe(res_df.sort_values(["Distancia","Zona sugerida"]).reset_index(drop=True), use_container_width=True)
+
+                with st.expander("🎛️ Preferencias usadas para la similitud"):
+                    st.write(pd.DataFrame([q]))
+
+
+
 elif opcion == "Consultar datos históricos":
-    st.subheader("📈 Evolución de datos turísticos")
-    st.info("Consulta viajeros, pernoctaciones y ocupación a lo largo del tiempo.")
-    # TODO: gráficos y tablas
+
+    st.subheader("📈 Datos históricos del turismo")
+    st.caption("Analiza la evolución temporal por zona turística, tipo de alojamiento y periodo.")
+
+    # ---------- Config & helpers ----------
+    meses_nombres = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
+    columnas_tipo = {
+        "Turismo Hotelero": "VIAJEROS_EOH",
+        "Turismo Rural": "VIAJEROS_EOTR",
+        "Apartamentos": "VIAJEROS_EOAP",
+        "Campings": "VIAJEROS_EOAC"
+    }
+
+    # ---------- Filtros (en línea) ----------
+    
+    c1, c2, c3 = st.columns([1.5, 2.5, 2.5])
+
+    with c1:
+        # Rango de años
+        años = sorted(df["AÑO"].dropna().unique())
+        if not len(años):
+            st.warning("No hay datos de años en el dataset.")
+            st.stop()
+        año_min, año_max = int(min(años)), int(max(años))
+        # "Todos" = rango completo
+        año_opciones = ["Todos"] + [str(a) for a in años]
+        año_sel = st.selectbox("Años", options=año_opciones, index=0)
+        if año_sel == "Todos":
+            año_rango = (año_min, año_max)
+        else:
+            año_sel = int(año_sel)
+            año_rango = (año_sel, año_sel)
+
+    with c2:
+        # Meses
+        meses_nombres = {
+            1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
+            7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"
+        }
+        meses_disponibles = sorted(df["MES"].dropna().unique().tolist())
+        meses_labels = [meses_nombres.get(m, str(m)) for m in meses_disponibles]
+        meses_opciones = ["Todos"] + meses_labels
+        mes_sel = st.selectbox("Meses", options=meses_opciones, index=0)
+        meses_sel = meses_disponibles if mes_sel == "Todos" else [k for k,v in meses_nombres.items() if v == mes_sel]
+
+    with c3:
+        # Tipos de turismo
+        tipos_all = list(columnas_tipo.keys())
+        tipos_opciones = ["Todos"] + tipos_all
+        tipo_sel = st.selectbox("Tipo de alojamiento", options=tipos_opciones, index=0)
+        tipos_sel = tipos_all if tipo_sel == "Todos" else [tipo_sel]
+
+    c4, c5 = st.columns([2.5, 3])
+
+    with c4:
+        # Zonas
+        zonas_all = sorted(df["ZONA_TURISTICA"].dropna().unique().tolist())
+        zonas_opciones = ["Todas"] + zonas_all
+        zona_sel = st.selectbox("Zona turística", options=zonas_opciones, index=0)
+        zonas_sel = zonas_all if zona_sel == "Todas" else [zona_sel]
+
+    with c5:
+        # Nivel de agregación temporal
+        nivel = st.radio("Agregación temporal", ["Mensual", "Trimestral", "Anual"], horizontal=True)
+
+    # ---------- Preparación de datos ----------
+    if not tipos_sel:
+        st.warning("Selecciona al menos un tipo de alojamiento.")
+        st.stop()
+
+    cols_metric = [columnas_tipo[t] for t in tipos_sel]
+    df_h = df.copy()
+    df_h = df_h[(df_h["AÑO"].between(año_rango[0], año_rango[1])) & (df_h["MES"].isin(meses_sel))]
+    if zonas_sel:
+        df_h = df_h[df_h["ZONA_TURISTICA"].isin(zonas_sel)]
+
+    # Suma de viajeros de los tipos seleccionados
+    for c in cols_metric:
+        if c not in df_h.columns:
+            df_h[c] = 0
+    df_h["VIAJEROS_SEL"] = df_h[cols_metric].sum(axis=1)
+
+    # Crear fecha y campos útiles
+    df_h["FECHA"] = pd.to_datetime(df_h["AÑO"].astype(int).astype(str) + "-" + df_h["MES"].astype(int).astype(str) + "-01")
+    df_h["TRIM"] = pd.PeriodIndex(df_h["FECHA"], freq="Q").astype(str)
+
+    # Agregación por nivel
+    group_keys = ["ZONA_TURISTICA"]
+    if nivel == "Mensual":
+        group_keys += ["AÑO", "MES", "FECHA"]
+    elif nivel == "Trimestral":
+        group_keys += ["AÑO", "TRIM"]
+    else:  # Anual
+        group_keys += ["AÑO"]
+
+    agg = df_h.groupby(group_keys, as_index=False)["VIAJEROS_SEL"].sum()
+
+    # ---------- KPIs ----------
+    # KPI Total periodo filtrado
+    total_periodo = int(agg["VIAJEROS_SEL"].sum()) if len(agg) else 0
+
+    # KPI YoY (comparar último año disponible vs anterior, mis mas)
+    yoy_txt = "N/D"
+    try:
+        ult_anio = int(df_h["AÑO"].max())
+        ant_anio = ult_anio - 1
+        tot_ult = int(df_h.loc[df_h["AÑO"] == ult_anio, "VIAJEROS_SEL"].sum())
+        tot_ant = int(df_h.loc[df_h["AÑO"] == ant_anio, "VIAJEROS_SEL"].sum())
+        if tot_ant > 0:
+            yoy = (tot_ult / tot_ant - 1) * 100
+            yoy_txt = f"{yoy:+.1f}%"
+        else:
+            yoy_txt = "N/D"
+    except Exception:
+        pass
+
+    # KPI Top zona en el periodo
+    top_zona_txt = "N/D"
+    if len(df_h):
+        top_zona = df_h.groupby("ZONA_TURISTICA", as_index=False)["VIAJEROS_SEL"].sum().sort_values("VIAJEROS_SEL", ascending=False).head(1)
+        if len(top_zona):
+            top_zona_txt = f"{top_zona.iloc[0]['ZONA_TURISTICA']} ({int(top_zona.iloc[0]['VIAJEROS_SEL']):,}".replace(",", ".") + ")"
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Viajeros (periodo filtrado)", f"{total_periodo:,}".replace(",", "."))
+    k2.metric("Variación YoY (último año vs. anterior)", yoy_txt)
+    k3.metric("Zona top", top_zona_txt)
+
+    st.divider()
+
+    # ---------- Series temporales ----------
+    st.markdown("#### Evolución temporal")
+
+    if nivel == "Mensual":
+        x_field = "FECHA"
+        x_title = "Fecha"
+    elif nivel == "Trimestral":
+        x_field = "TRIM"
+        x_title = "Trimestre"
+    else:
+        x_field = "AÑO"
+        x_title = "Año"
+
+    # Serie total (todas las zonas) + por zona (interactiva)
+    agg_total = agg.groupby(x_field, as_index=False)["VIAJEROS_SEL"].sum().sort_values(x_field)
+
+    base_total = alt.Chart(agg_total).mark_line(point=True).encode(
+        x=alt.X(x_field, title=x_title, sort=None),
+        y=alt.Y("VIAJEROS_SEL:Q", title="Viajeros"),
+        tooltip=[x_field, alt.Tooltip("VIAJEROS_SEL:Q", title="Viajeros", format=",.0f")]
+    ).properties(height=280)
+
+    st.altair_chart(base_total, use_container_width=True)
+
+    # Serie por zona (facet opcional con selector)
+    with st.expander("Ver evolución por zona"):
+        zonas_plot = agg["ZONA_TURISTICA"].dropna().unique().tolist()
+        zonas_sel_plot = st.multiselect("Zonas a mostrar", zonas_plot, default=zonas_plot[:8])
+        df_plot = agg[agg["ZONA_TURISTICA"].isin(zonas_sel_plot)].copy()
+
+        if len(df_plot):
+            line = alt.Chart(df_plot).mark_line().encode(
+                x=alt.X(x_field, title=x_title, sort=None),
+                y=alt.Y("VIAJEROS_SEL:Q", title="Viajeros"),
+                color=alt.Color("ZONA_TURISTICA:N", title="Zona"),
+                tooltip=["ZONA_TURISTICA", x_field, alt.Tooltip("VIAJEROS_SEL:Q", title="Viajeros", format=",.0f")]
+            ).properties(height=320)
+            st.altair_chart(line, use_container_width=True)
+        else:
+            st.warning("No hay datos para las zonas seleccionadas.")
+
+    st.divider()
+
+    # ---------- Heatmap Año vs Mes ----------
+    st.markdown("#### Calendario (Año × Mes)")
+    # Pivot con suma por año-mes (todas las zonas filtradas)
+    df_hm = df_h.groupby(["AÑO", "MES"], as_index=False)["VIAJEROS_SEL"].sum()
+    if len(df_hm):
+        df_hm["Mes"] = df_hm["MES"].map(meses_nombres)
+        heat = alt.Chart(df_hm).mark_rect().encode(
+            x=alt.X("Mes:N", sort=list(meses_nombres.values()), title="Mes"),
+            y=alt.Y("AÑO:O", title="Año"),
+            color=alt.Color("VIAJEROS_SEL:Q", title="Viajeros", scale=alt.Scale(scheme="blues")),
+            tooltip=[
+                alt.Tooltip("AÑO:O", title="Año"),
+                alt.Tooltip("Mes:N", title="Mes"),
+                alt.Tooltip("VIAJEROS_SEL:Q", title="Viajeros", format=",.0f")
+            ]
+        ).properties(height=260)
+        st.altair_chart(heat, use_container_width=True)
+    else:
+        st.info("No hay datos para construir el calendario.")
+
+    st.divider()
+
+    # ---------- Top 10 zonas ----------
+    st.markdown("#### Top 10 zonas en el periodo filtrado")
+    topN = df_h.groupby("ZONA_TURISTICA", as_index=False)["VIAJEROS_SEL"].sum().sort_values("VIAJEROS_SEL", ascending=False).head(10)
+    if len(topN):
+        barchart = alt.Chart(topN).mark_bar().encode(
+            x=alt.X("VIAJEROS_SEL:Q", title="Viajeros"),
+            y=alt.Y("ZONA_TURISTICA:N", sort="-x", title=None),
+            tooltip=[alt.Tooltip("VIAJEROS_SEL:Q", title="Viajeros", format=",.0f"), "ZONA_TURISTICA:N"]
+        ).properties(height=28*len(topN) + 20)
+        st.altair_chart(barchart, use_container_width=True)
+
+        # tabla + descarga
+        show_tbl = st.checkbox("Mostrar tabla", value=False)
+        if show_tbl:
+            tmp = topN.copy()
+            tmp["Viajeros"] = tmp["VIAJEROS_SEL"].map(lambda x: f"{x:,.0f}".replace(",", "."))
+            st.dataframe(tmp[["ZONA_TURISTICA", "Viajeros"]].reset_index(drop=True), use_container_width=True)
+
+        csv = topN.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Descargar Top 10 (CSV)", data=csv, file_name="top10_zonas_periodo.csv", mime="text/csv")
+    else:
+        st.info("No hay datos para el Top 10 en el periodo seleccionado.")
+
+
+
+
 
 elif opcion == "Acerca del proyecto":
     st.subheader("ℹ️ Acerca de este proyecto")
@@ -433,5 +846,27 @@ herramientas de ciencia de datos, visualización interactiva y modelado predicti
 # =========================
 # FOOTER
 # =========================
+# =========================
+# FOOTER
+# =========================
 st.markdown("---")
-st.markdown("<p class='footer-note'>© 2025 Proyecto TFM - Redistribución Turística | Deep5</p>", unsafe_allow_html=True)
+
+col1, col2, col3, col4, col5 = st.columns([6, 2, 2, 2, 6])  # repartición de columnas
+
+with col2:
+    st.image("./Logos/Logo_Deep5.svg", width=160)
+
+with col3:
+    st.markdown(
+        "<p style='text-align:center; font-size:0.9rem; margin-top:20px;'>En colaboración con</p>",
+        unsafe_allow_html=True
+    )
+
+with col4:
+    st.image("./Logos/Logo_Tui3.svg", width=100)
+
+st.markdown(
+    "<p class='footer-note'>© 2025 Proyecto TFM - Redistribución Turística | Deep5</p>",
+    unsafe_allow_html=True
+)
+
