@@ -8,6 +8,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.neighbors import NearestNeighbors
 from streamlit_autorefresh import st_autorefresh
 import altair as alt
+import os, glob
 
 
 # =========================
@@ -314,21 +315,11 @@ elif opcion == "Seleccionar destino alternativo":
         knn_pipeline, df_knn, features = entrenar_pipeline(df_zt)
         zona_nombres = df_zt['Nombre_Zona'].astype(str).tolist()
 
-        # ========= Cargar forecasts 2025–2026 =========
-        import os, glob
 
         @st.cache_data
         def cargar_forecasts():
-            # Busca el último archivo con timestamp; si no, intenta fallback fijo
-            candidates = sorted(glob.glob("./Forecasts_ocupacion_por_zona_2025_2026_*.xlsx"))
-            if candidates:
-                path = candidates[-1]
-            else:
-                path = "./Forecasts_2025_2026.xlsx"
-                if not os.path.exists(path):
-                    return None, "No se encontró el archivo de forecasts. Genera primero el Excel."
             try:
-                df_f = pd.read_excel(path, sheet_name=0)
+                df_f = pd.read_excel("./Forecasts_2025_2026.xlsx")
             except Exception as e:
                 return None, f"No se pudo leer el Excel de forecasts: {e}"
             # Tipos
@@ -436,7 +427,6 @@ elif opcion == "Seleccionar destino alternativo":
                         filtrados.append(row)
 
                     # Calculamos similitud (0–100) relativa al p95 de las distancias (evita outliers)
-                    import numpy as np
                     dists = [r["Distancia"] for r in filtrados if r["Zona"] != zona_objetivo]
                     if len(dists) == 0:
                         p95 = 1.0
