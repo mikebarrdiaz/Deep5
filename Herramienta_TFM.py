@@ -191,9 +191,10 @@ imagenes = [
     {"url":"https://cdn.pixabay.com/photo/2020/05/08/22/51/national-park-5147616_1280.jpg","ciudad":"Aigüestortes, Lleida"},
     {"url":"https://images.unsplash.com/photo-1665157809094-02fc338305f5?q=80&w=2064&auto=format&fit=crop&ixlib=rb-4.1.0","ciudad":"Alt Pirineu, Lleida"},
     {"url":"https://multimedia.comunitatvalenciana.com/B5B34B4AEFC64B248A719A3B64306FD9/img/E991F48A7CEC482AA06F299319096C07/costa_de_azahar.jpg?responsive","ciudad":"Costa Azahar, Comunitat Valenciana"},
-    {"url":"https://images.unsplash.com/photo-1677939217436-01d7c0b8738e?q=80&w=1740&auto=format&fit=crop&ixlib=rb-4.1.0","ciudad":"Torre del Oro, Sevilla"},
-    {"url":"https://images.unsplash.com/photo-1677939217436-01d7c0b8738e?q=80&w=1740&auto=format&fit=crop&ixlib=rb-4.1.0","ciudad":"Torre del Oro, Sevilla"},
-    {"url":"https://images.unsplash.com/photo-1677939217436-01d7c0b8738e?q=80&w=1740&auto=format&fit=crop&ixlib=rb-4.1.0","ciudad":"Torre del Oro, Sevilla"}
+    {"url":"https://cdn.pixabay.com/photo/2022/11/18/16/53/spain-7600551_1280.jpg","ciudad":"Los Alcornocales, Cádiz"},
+    {"url":"https://mediaim.expedia.com/destination/1/f8e3b5569445fd06122bf4f0bbee0806.jpg","ciudad":"Cadí-Moixeró, Barcelona"},
+    {"url":"https://www.barcelo.com/guia-turismo/wp-content/uploads/ok-costa-vizcaina.jpg","ciudad":"Costa Bizkaia, Pais Vasco"},
+    {"url":"https://www.andaluciasimple.com/wp-content/uploads/2020/11/AdobeStock_132882206-scaled.jpeg","ciudad":"Costa Del Sol (Málaga), Andalucía"}
 ]
 
 # =========================
@@ -302,73 +303,203 @@ if opcion == "Inicio":
 
 elif opcion == "Seleccionar destino alternativo":
     st.subheader("🔍 Recomendador de destinos turísticos alternativos")
-    st.info("Introduce tu destino actual y obtén sugerencias con características similares.")
+    st.info("Selecciona el tipo de estancia, el mes y el año; luego lanza la búsqueda para ver un único ranking por ocupación con tus zonas similares (incluida la seleccionada).")
 
-    # Cargar datos del recomendador y entrenar pipeline (cacheado)
+    # ========= Carga datos base =========
     df_zt = cargar_datazt()
     if "Nombre_Zona" not in df_zt.columns:
-        st.error("⚠️ No se encontró la columna 'Nombre_Zona' en DataZT.xlsx (hoja 'Data ZT').")
+        st.error("⚠️ Error: falta la columna 'Nombre_Zona' en los datos de zonas.")
     else:
+        # Entrenar pipeline KNN (cacheado en tu función)
         knn_pipeline, df_knn, features = entrenar_pipeline(df_zt)
         zona_nombres = df_zt['Nombre_Zona'].astype(str).tolist()
 
-        colA, colB = st.columns([2,1])
+        # ========= Cargar forecasts 2025–2026 =========
+        import os, glob
+
+        @st.cache_data
+        def cargar_forecasts():
+            # Busca el último archivo con timestamp; si no, intenta fallback fijo
+            candidates = sorted(glob.glob("./Forecasts_ocupacion_por_zona_2025_2026_*.xlsx"))
+            if candidates:
+                path = candidates[-1]
+            else:
+                path = "./Forecasts_2025_2026.xlsx"
+                if not os.path.exists(path):
+                    return None, "No se encontró el archivo de forecasts. Genera primero el Excel."
+            try:
+                df_f = pd.read_excel(path, sheet_name=0)
+            except Exception as e:
+                return None, f"No se pudo leer el Excel de forecasts: {e}"
+            # Tipos
+            for c in ["AÑO", "MES"]:
+                if c in df_f.columns:
+                    df_f[c] = pd.to_numeric(df_f[c], errors="coerce").astype("Int64")
+            return df_f, None
+
+        df_fore, err_fore = cargar_forecasts()
+        if err_fore:
+            st.error(err_fore)
+
+        # ========= Controles previos (tipo, métrica, fecha y zona) =========
+        # Meses en español (sin número)
+        MESES_ES = [
+            "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+            "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
+        ]
+
+        TIPO_TO_COLS = {
+            "Turismo rural": {
+                "Plazas": "GRADO_OCUPA_PLAZAS_EOTR",
+                "Plazas Fin de Semana": "GRADO_OCUPA_PLAZAS_FIN_SEMANA_EOTR",
+                "Habitaciones": "GRADO_OCUPA_HABITACIONES_EOTR",
+            },
+            "Hotel": {
+                "Plazas": "GRADO_OCUPA_PLAZAS_EOH",
+                "Plazas Fin de Semana": "GRADO_OCUPA_PLAZAS_FIN_SEMANA_EOH",
+                "Habitaciones": "GRADO_OCUPA_POR_HABITACIONES_EOH",
+            },
+            "Apartamentos": {
+                "Plazas": "GRADO_OCUPA_PLAZAS_EOAP",
+                "Apartamentos": "GRADO_OCUPA_APART_EOAP",
+                "Apartamentos Fin de Semana": "GRADO_OCUPA_APART_FIN_SEMANA_EOAP",
+            },
+            "Camping": {
+                "Parcelas": "GRADO_OCUPA_PARCELAS_EOAC",
+                "Parcelas Fin de Semana": "GRADO_OCUPA_PARCELAS_FIN_SEMANA_EOAC",
+            },
+        }
+
+
+        colA, colB, colC, colD, colE = st.columns([2, 2, 1.7, 1, 1])
         with colA:
             zona_objetivo = st.selectbox(
-                "Elige tu destino actual",
+                "Destino actual",
                 options=zona_nombres,
                 index=0,
-                help="Selecciona la zona desde la que quieres buscar alternativas similares."
+                help="Zona desde la que quieres buscar alternativas similares."
             )
         with colB:
-            k_recom = st.slider("N.º de sugerencias", min_value=3, max_value=10, value=5, step=1)
+            tipo_estancia = st.selectbox("Tipo de estancia", list(TIPO_TO_COLS.keys()))
 
-        if st.button("🔎 Buscar destinos alternativos", use_container_width=True):
-            try:
-                indice_zona = zona_nombres.index(zona_objetivo)
-            except ValueError:
-                st.error("No se encontró la zona seleccionada en los datos.")
+        with colC:
+            # Mostramos los nombres bonitos
+            metrica_bonita = st.selectbox("Métrica de ocupación", list(TIPO_TO_COLS[tipo_estancia].keys()))
+            # Recuperamos el nombre real de la columna
+            colname = TIPO_TO_COLS[tipo_estancia][metrica_bonita]
+
+            
+        with colD:
+            año_sel = st.selectbox("Año", [2025, 2026], index=0)
+        
+        with colE:
+            mes_nombre = st.selectbox("Mes", MESES_ES, index=0)
+            mes_sel = MESES_ES.index(mes_nombre) + 1      
+
+        colE, colF = st.columns([1, 1])
+        with colE:
+            k_recom = st.slider("N.º de sugerencias similares", min_value=3, max_value=12, value=5, step=1)
+        with colF:
+            buscar = st.button("🔎 Buscar destinos alternativos", use_container_width=True)
+
+        # ========= Acción: buscar similares y mostrar ÚNICA tabla =========
+        if buscar:
+            if df_fore is None:
+                st.error("No hay forecasts disponibles; no se puede generar el ranking. Genera primero el Excel.")
             else:
-                zona_vector = df_knn.iloc[[indice_zona]]
-                distancias, indices = knn_pipeline.named_steps['knn'].kneighbors(
-                    knn_pipeline.named_steps['preprocessor'].transform(zona_vector),
-                    n_neighbors=k_recom + 1  # +1 para incluir la propia
-                )
-
-                resultados = []
-                for j, i in enumerate(indices[0]):
-                    if i == indice_zona:
-                        continue
-                    resultados.append({
-                        "Zona sugerida": zona_nombres[i],
-                        "Distancia": float(distancias[0][j])
-                    })
-                    if len(resultados) == k_recom:
-                        break
-
-                if not resultados:
-                    st.warning("No se pudieron generar sugerencias.")
+                # 1) KNN similares
+                try:
+                    indice_zona = zona_nombres.index(zona_objetivo)
+                except ValueError:
+                    st.error("No se encontró la zona seleccionada en los datos.")
                 else:
-                    res_df = pd.DataFrame(resultados)
-                    # Escala de similitud 0–100 (relativa al p95 de las distancias)
-                    p95 = np.percentile(res_df["Distancia"], 95) if len(res_df) > 1 else res_df["Distancia"].max()
-                    p95 = p95 if p95 > 0 else 1.0
-                    res_df["Similitud (0-100)"] = (100 * (1 - res_df["Distancia"]/p95)).clip(0, 100).round(1)
-
-                    st.success(f"Destinos alternativos similares a **{zona_objetivo}**")
-                    st.dataframe(
-                        res_df.sort_values(["Distancia","Zona sugerida"]).reset_index(drop=True),
-                        use_container_width=True
+                    zona_vector = df_knn.iloc[[indice_zona]]
+                    distancias, indices = knn_pipeline.named_steps['knn'].kneighbors(
+                        knn_pipeline.named_steps['preprocessor'].transform(zona_vector),
+                        n_neighbors=k_recom + 1  # +1 incluye la propia
                     )
 
-                    with st.expander("Ver atributos utilizados en la comparación"):
-                        st.write("Características empleadas (categóricas + numéricas):")
-                        st.code("\n".join(features), language="text")
-                        st.write("Valores de la zona objetivo:")
-                        st.dataframe(
-                            df_zt.loc[df_zt["Nombre_Zona"] == zona_objetivo, ["Nombre_Zona"] + features],
-                            use_container_width=True
-                        )
+                    # Construimos similitudes (0–100) y añadimos SIEMPRE la seleccionada (similitud 100)
+                    similares = []
+                    for j, i in enumerate(indices[0]):
+                        nombre = zona_nombres[i]
+                        dist = float(distancias[0][j])
+                        similares.append({"Zona": nombre, "Distancia": dist})
+
+                    # Quitamos duplicados preservando orden
+                    seen = set()
+                    filtrados = []
+                    for row in similares:
+                        if row["Zona"] in seen:
+                            continue
+                        seen.add(row["Zona"])
+                        filtrados.append(row)
+
+                    # Calculamos similitud (0–100) relativa al p95 de las distancias (evita outliers)
+                    import numpy as np
+                    dists = [r["Distancia"] for r in filtrados if r["Zona"] != zona_objetivo]
+                    if len(dists) == 0:
+                        p95 = 1.0
+                    else:
+                        p95 = np.percentile(dists, 95)
+                        p95 = p95 if p95 > 0 else 1.0
+
+                    tabla_sim = []
+                    for r in filtrados:
+                        if r["Zona"] == zona_objetivo:
+                            sim = 100.0
+                        else:
+                            sim = 100.0 * (1.0 - (r["Distancia"] / p95))
+                        tabla_sim.append({"Zona": r["Zona"], "Similitud (0-100)": np.clip(sim, 0, 100)})
+
+                    df_sim = pd.DataFrame(tabla_sim)
+
+                    # 2) Unir con forecasts del mes/año elegido (y ordenar solo por ocupación)
+                    if colname not in df_fore.columns:
+                        st.warning(f"La columna '{colname}' no está en el archivo de forecasts.")
+                        st.stop()
+
+                    df_mes = df_fore[(df_fore["AÑO"] == año_sel) & (df_fore["MES"] == mes_sel)].copy()
+                    df_mes = df_mes.rename(columns={"ZONA_TURISTICA": "Zona"})
+                    df_mes = df_mes[["Zona", colname]]
+
+                    # Zonas a considerar: las que están en similares (incluida la seleccionada)
+                    zonas_universo = df_sim["Zona"].astype(str).tolist()
+                    df_mes = df_mes[df_mes["Zona"].astype(str).isin(zonas_universo)]
+
+                    if df_mes.empty:
+                        st.warning("No hay datos de forecast para ese mes/año en estas zonas.")
+                        st.stop()
+
+                    # Merge similitud + forecast
+                    df_final = df_sim.merge(df_mes, on="Zona", how="left")
+                    df_final = df_final.rename(columns={colname: "Grado de ocupación (%)"})
+
+                    # Filtrar NaN en ocupación
+                    df_final = df_final.dropna(subset=["Grado de ocupación (%)"])
+
+                    # Marcar seleccionada
+                    df_final.insert(0, "Seleccionada", df_final["Zona"].eq(zona_objetivo).map({True: "✅", False: ""}))
+
+                    # Ordenar columnas: Seleccionada, Zona, Ocupación, Similitud
+                    df_final = df_final[["Zona", "Grado de ocupación (%)", "Similitud (0-100)"]]
+
+                    # Ordenar por ocupación ascendente
+                    df_final = df_final.sort_values(
+                        by=["Similitud (0-100)","Grado de ocupación (%)"],
+                        ascending=[False, True]
+                    ).reset_index(drop=True)
+
+                    # Formato porcentaje con 1 decimal
+                    df_final["Grado de ocupación (%)"] = df_final["Grado de ocupación (%)"].map(lambda x: f"{x:.1f}%")
+                    df_final["Similitud (0-100)"] = df_final["Similitud (0-100)"].map(lambda x: f"{x:.1f}%")
+
+                    # Mostrar tabla única
+                    st.success(f"Ranking por **{metrica_bonita}** – {mes_nombre} {año_sel}")
+                    st.dataframe(df_final, use_container_width=True, hide_index=True)
+
+
+
 
 elif opcion == "Ver mapas de saturación":
     st.subheader("Mapa de saturación turística por zona")
@@ -466,7 +597,7 @@ elif opcion == "Ver mapas de saturación":
 
 elif opcion == "Encuentra tu destino":
     st.subheader("🧭 Encuentra tu destino")
-    st.info("Filtra por características (Data ZT) y obtén destinos que cumplan tus criterios o, si no existen, sugerencias similares.")
+    st.info("Filtra por características y obtén destinos que cumplan tus criterios o, si no existen, sugerencias similares.")
 
     # Cargar tabla de trabajo
     df_zt = cargar_datazt()
@@ -494,17 +625,17 @@ elif opcion == "Encuentra tu destino":
     colA, colB, colC = st.columns([1,1,1])
 
     with colA:
-        tipo_ubic = st.multiselect("Tipo de ubicación", sorted(df_zt['Tipo_Ubicación'].dropna().unique().tolist()) if 'Tipo_Ubicación' in df_zt else [])
-        clima = st.multiselect("Clima (Köppen)", sorted(df_zt['Clima_Köppen'].dropna().unique().tolist()) if 'Clima_Köppen' in df_zt else [])
-        tipo_tur = st.multiselect("Tipo de turismo principal", sorted(df_zt['Tipo_Turismo_Principal'].dropna().unique().tolist()) if 'Tipo_Turismo_Principal' in df_zt else [])
+        tipo_ubic = st.multiselect("Tipo de ubicación", sorted(df_zt['Tipo_Ubicación'].dropna().unique().tolist()) if 'Tipo_Ubicación' in df_zt else [], placeholder="Elige una opción")
+        clima = st.multiselect("Clima (Köppen)", sorted(df_zt['Clima_Köppen'].dropna().unique().tolist()) if 'Clima_Köppen' in df_zt else [], placeholder="Elige una opción")
+        tipo_tur = st.multiselect("Tipo de turismo principal", sorted(df_zt['Tipo_Turismo_Principal'].dropna().unique().tolist()) if 'Tipo_Turismo_Principal' in df_zt else [], placeholder="Elige una opción")
 
     with colB:
-        estac = st.multiselect("Estacionalidad climática", sorted(df_zt['Estacionalidad_Climática'].dropna().unique().tolist()) if 'Estacionalidad_Climática' in df_zt else [])
-        infra = st.multiselect("Nivel de infraestructura turística", sorted(df_zt['Nivel_Infraestructura_Turística'].dropna().unique().tolist()) if 'Nivel_Infraestructura_Turística' in df_zt else [])
-        act1 = st.multiselect("Actividad principal 1", sorted(df_zt['Actividad principal 1'].dropna().unique().tolist()) if 'Actividad principal 1' in df_zt else [])
+        estac = st.multiselect("Estacionalidad climática", sorted(df_zt['Estacionalidad_Climática'].dropna().unique().tolist()) if 'Estacionalidad_Climática' in df_zt else [], placeholder="Elige una opción")
+        infra = st.multiselect("Nivel de infraestructura turística", sorted(df_zt['Nivel_Infraestructura_Turística'].dropna().unique().tolist()) if 'Nivel_Infraestructura_Turística' in df_zt else [], placeholder="Elige una opción")
+        act1 = st.multiselect("Actividad principal 1", sorted(df_zt['Actividad principal 1'].dropna().unique().tolist()) if 'Actividad principal 1' in df_zt else [], placeholder="Elige una opción")
 
     with colC:
-        act2 = st.multiselect("Actividad principal 2", sorted(df_zt['Actividad principal 2'].dropna().unique().tolist()) if 'Actividad principal 2' in df_zt else [])
+        act2 = st.multiselect("Actividad principal 2", sorted(df_zt['Actividad principal 2'].dropna().unique().tolist()) if 'Actividad principal 2' in df_zt else [], placeholder="Elige una opción")
         # Slider de altitud
         if 'Altitud_Media_msnm' in df_zt:
             alt_min = int(pd.to_numeric(df_zt['Altitud_Media_msnm'], errors='coerce').min())
@@ -627,7 +758,7 @@ elif opcion == "Consultar datos históricos":
     }
 
     # ---------- Filtros (en línea) ----------
-    
+
     c1, c2, c3 = st.columns([1.5, 2.5, 2.5])
 
     with c1:
@@ -736,8 +867,8 @@ elif opcion == "Consultar datos históricos":
         if len(top_zona):
             top_zona_txt = f"{top_zona.iloc[0]['ZONA_TURISTICA']} ({int(top_zona.iloc[0]['VIAJEROS_SEL']):,}".replace(",", ".") + ")"
 
-    k1, k2, k3 = st.columns(3)
-    k1.metric("Viajeros (periodo filtrado)", f"{total_periodo:,}".replace(",", "."))
+    k1, k2, k3 = st.columns([3, 3, 4])
+    k1.metric("Viajeros", f"{total_periodo:,}".replace(",", "."))
     k2.metric("Variación YoY (último año vs. anterior)", yoy_txt)
     k3.metric("Zona top", top_zona_txt)
 
@@ -809,7 +940,7 @@ elif opcion == "Consultar datos históricos":
     st.divider()
 
     # ---------- Top 10 zonas ----------
-    st.markdown("#### Top 10 zonas en el periodo filtrado")
+    st.markdown("#### Top 10 zonas")
     topN = df_h.groupby("ZONA_TURISTICA", as_index=False)["VIAJEROS_SEL"].sum().sort_values("VIAJEROS_SEL", ascending=False).head(10)
     if len(topN):
         barchart = alt.Chart(topN).mark_bar().encode(
@@ -843,9 +974,6 @@ de recomendación y análisis para mejorar la distribución del turismo en Espa�
 herramientas de ciencia de datos, visualización interactiva y modelado predictivo.
     """)
 
-# =========================
-# FOOTER
-# =========================
 # =========================
 # FOOTER
 # =========================
