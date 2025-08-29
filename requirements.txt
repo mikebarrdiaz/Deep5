@@ -1,4 +1,7 @@
 streamlit
-pandas
 pydeck
-openpyxl
+pandas
+numpy
+scikit-learn
+streamlit-autorefresh
+altair
