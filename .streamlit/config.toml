@@ -1,0 +1,52 @@
+[server]
+# Sirve archivos de /static automáticamente
+enableStaticServing = true
+
+[theme]
+# === BASE DEL TEMA ===
+base = "light"                  # "light" | "dark"
+font = "Satoshi"                # Fuente principal
+codeFont = "Satoshi"            # Fuente para bloques de código
+primaryColor = "#306388"        # Color primario (botones, links activos, etc.)
+backgroundColor = "#ffffff"     # Fondo principal
+secondaryBackgroundColor = "#e6eaed"   # Fondos secundarios (widgets, sidebar)
+codeBackgroundColor = "#f6f7f8"        # Fondo de bloques de código
+textColor = "#224762"           # Color de texto
+linkColor = "#5797c4"           # Color de enlaces
+borderColor = "#c2ccd4"         # Color de bordes y divisores
+
+# === FORMAS Y BORDES ===
+showWidgetBorder = false        # true → muestra borde alrededor de cada widget
+baseRadius = "0.6rem"           # radio de borde general
+buttonRadius = "0.6rem"         # radio de botones
+inputRadius = "0.6rem"          # radio de inputs (añadido recientemente)
+cardRadius = "0.6rem"           # radio de tarjetas/containers
+
+# === TIPOGRAFÍA ENCABEZADOS ===
+headingFontWeights = [700, 600, 600, 600, 600]  # h1..h5
+headingFontSizes   = ["2.4rem", "2rem", "1.6rem", "1.3rem", "1.1rem"]
+
+# === GRAFICAS ===
+chartCategoricalColors = [
+  "#224762", "#385971", "#e6eaed", "#688194", "#306388",
+  "#5797c4", "#769ebb", "#c7dceb"
+]
+# Paleta de colores usada en gráficas de Altair / matplotlib / plotly
+
+# === ANIMACIONES ===
+animationDuration = "200ms"     # Velocidad de transiciones
+easingFunction = "ease-in-out"  # Curva de animación
+
+[theme.sidebar]
+backgroundColor = "#f6f7f8"
+secondaryBackgroundColor = "#eceff1"
+codeBackgroundColor = "#f6f7f8"
+borderColor = "#c2ccd4"
+textColor = "#224762"
+linkColor = "#306388"
+
+[[theme.fontFaces]]
+family = "Satoshi"
+url = "static/Satoshi-Regular.otf"
+style = "normal"
+weight = "400"
