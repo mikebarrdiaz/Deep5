@@ -1,5 +1,6 @@
-# app.py
-import os
+# Proyecto RedisTour
+# github: https://github.com/mikebarrdiaz/Deep5
+
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -115,12 +116,14 @@ def p95_normalized_similarity(distances: list[float]) -> float:
     p95 = np.percentile(distances, 95)
     return max(float(p95), 1e-9)
 
+
 # =========================
 # RUTAS (robustas)
 # =========================
 BASE = Path(__file__).resolve().parent
 DATA_DIR = BASE / "Data_Dataestur"
 LOGOS_DIR = BASE / "Logos"
+
 
 # =========================
 # ESTILOS (1 bloque)
@@ -163,6 +166,7 @@ st.markdown("""
 .section-title { margin: 8px 0 6px 0; font-weight: 800; color:#224762; }
 </style>
 """, unsafe_allow_html=True)
+
 
 # =========================
 # CARGA DE DATOS (mapa) – Excel
@@ -310,8 +314,9 @@ def get_loc_info(zona: str):
                 pr = str(val) if pd.notna(val) else "—"
     return ca, pr
 
+
 # =========================
-# CARGA GLOBAL DE OPINIONES Y FORECASTS (una sola vez)
+# CARGA GLOBAL DE OPINIONES Y FORECASTS 
 # =========================
 @st.cache_data(ttl=3600, show_spinner=False)
 def cargar_opiniones_zt():
@@ -348,6 +353,7 @@ def cargar_forecasts():
 
 OPINIONES_MAP, _err_ops_global = cargar_opiniones_zt()
 df_fore_global, _err_fore_global = cargar_forecasts()
+
 
 # =========================
 # RECOMENDADOR k-NN (Destino alternativo)
@@ -423,7 +429,7 @@ def entrenar_pipeline(df_zt: pd.DataFrame):
 # =========================
 col_logo, col_text = st.columns([2, 9])
 with col_logo:
-    logo_path = LOGOS_DIR / "Redisstour.svg"
+    logo_path = LOGOS_DIR / "Redisstour2.svg"
     if logo_path.exists():
         st.image(str(logo_path), width=250)
 with col_text:
@@ -1708,9 +1714,7 @@ elif opcion == "Consultar datos históricos":
 
 elif opcion == "Acerca del proyecto":
     st.subheader("Acerca del proyecto")
-
-    # --- Helper: convertir imagen local a data URI (para <img> en HTML) ---
-    import base64, html
+    
     def _img_data_uri(path: Path) -> str | None:
         try:
             data = Path(path).read_bytes()
@@ -1788,8 +1792,7 @@ elif opcion == "Acerca del proyecto":
             f'<div class="avatar avatar-fallback">{html.escape(ini)}</div>'
         )
 
-        linkedin_logo = _img_data_uri(LOGOS_DIR / "LinkedIn_Logo.svg")  # ajusta el nombre si es .svg u otro
-
+        linkedin_logo = _img_data_uri(LOGOS_DIR / "LinkedIn_Logo.svg") 
         linkedin_html = ""
         if linkedin and linkedin_logo:
             linkedin_html = f"""
